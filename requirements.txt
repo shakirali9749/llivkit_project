@@ -1,0 +1,30 @@
+aiofiles==24.1.0
+aiohappyeyeballs==2.6.1
+aiohttp==3.12.14
+aiosignal==1.4.0
+asgiref==3.9.1
+attrs==25.3.0
+certifi==2025.7.14
+charset-normalizer==3.4.2
+Django==5.2.4
+frozenlist==1.7.0
+idna==3.10
+livekit==1.0.12
+livekit-api==1.0.4
+livekit-protocol==1.0.4
+livekit_server_sdk_python @ git+https://github.com/livekit/livekit-server-sdk-python.git@0ad70a1823a74822702029581a50c2e73c8625e6
+multidict==6.6.3
+# Editable install with no version control (my-project==0.1.0)
+-e /home/shakir/Documents/my_project
+numpy==2.3.1
+propcache==0.3.2
+protobuf==6.31.1
+PyJWT==2.10.1
+python-dotenv==1.1.1
+requests==2.32.4
+sqlparse==0.5.3
+structlog==25.4.0
+twirp==0.0.7
+types-protobuf==6.30.2.20250703
+urllib3==2.5.0
+yarl==1.20.1
