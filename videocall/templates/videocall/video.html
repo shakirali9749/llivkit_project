@@ -1,0 +1,515 @@
+this code 
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+  <title>LiveKit Video Call</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <script src="{% static 'js/livekit-client.umd.min.js' %}"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 10px;
+      padding: 30px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    h1 {
+      color: #333;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+    
+    input {
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      min-width: 150px;
+    }
+    
+    input:focus {
+      outline: none;
+      border-color: #007bff;
+    }
+    
+    button {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: background-color 0.3s;
+    }
+    
+    .join-btn {
+      background: #28a745;
+      color: white;
+    }
+    
+    .join-btn:hover {
+      background: #218838;
+    }
+    
+    .leave-btn {
+      background: #dc3545;
+      color: white;
+    }
+    
+    .leave-btn:hover {
+      background: #c82333;
+    }
+    
+    .toggle-btn {
+      background: #6c757d;
+      color: white;
+    }
+    
+    .toggle-btn:hover {
+      background: #545b62;
+    }
+    
+    .status {
+      margin: 20px 0;
+      padding: 15px;
+      border-radius: 6px;
+      font-weight: bold;
+    }
+    
+    .success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    
+    #video-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 30px;
+    }
+    
+    .video-section {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 20px;
+      border: 2px solid #dee2e6;
+    }
+    
+    .video-section h3 {
+      margin-top: 0;
+      color: #495057;
+      text-align: center;
+    }
+    
+    video {
+      width: 100%;
+      height: 250px;
+      border-radius: 8px;
+      background: #000;
+      object-fit: cover;
+    }
+    
+    .remote-participant {
+      margin-bottom: 20px;
+      background: white;
+      border-radius: 8px;
+      padding: 15px;
+      border: 1px solid #dee2e6;
+    }
+    
+    .remote-participant p {
+      margin: 0 0 10px 0;
+      font-weight: bold;
+      color: #495057;
+      text-align: center;
+    }
+    
+    .media-controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+      justify-content: center;
+    }
+
+    @media (max-width: 768px) {
+      .controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      
+      #video-container {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎥 LiveKit Video Call</h1>
+    
+    <div class="controls">
+      <input type="text" id="identity" placeholder="Enter your name" />
+      <input type="text" id="roomName" placeholder="Room name" value="test-room" />
+      <button class="join-btn" onclick="startCall()">Join Room</button>
+      <button class="leave-btn" onclick="endCall()">Leave Room</button>
+    </div>
+
+    <div class="media-controls">
+      <button class="toggle-btn" id="toggle-video" onclick="toggleVideo()">Turn Off Video</button>
+      <button class="toggle-btn" id="toggle-audio" onclick="toggleAudio()">Mute Audio</button>
+    </div>
+
+    <div id="status" class="status info">Ready to join a room</div>
+
+    <div id="video-container">
+      <div class="video-section">
+        <h3>📹 You (Local)</h3>
+        <video id="local-video" autoplay muted playsinline></video>
+      </div>
+      <div class="video-section">
+        <h3>👥 Participants</h3>
+        <div id="remote-videos">
+          <p style="text-align: center; color: #6c757d; font-style: italic;">
+            No participants yet. Share the room name with others to get started!
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let room = null;
+    let localVideoTrack = null;
+    let localAudioTrack = null;
+    let isVideoEnabled = true;
+    let isAudioEnabled = true;
+    
+    // Get LiveKit URL from Django template context
+    const livekitURL = "{{ livekit_url|default:'wss://videocall-d6wah1fm.livekit.cloud' }}";
+
+    function updateStatus(message, type = 'info') {
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = message;
+      statusEl.className = `status ${type}`;
+      console.log(`[${type.toUpperCase()}] ${message}`);
+    }
+
+    // Improved LiveKit loading check
+    function checkLiveKitLoaded() {
+      return new Promise((resolve, reject) => {
+        if (typeof LiveKitClient !== 'undefined') {
+          return resolve();
+        }
+
+        // If not loaded, wait a bit more in case it's still loading
+        const checkInterval = setInterval(() => {
+          if (typeof LiveKitClient !== 'undefined') {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 100);
+
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          reject(new Error('LiveKit client not loaded'));
+        }, 5000);
+      });
+    }
+
+    // Wait for DOM and LiveKit to be ready
+    window.addEventListener('DOMContentLoaded', async () => {
+      // Generate random user ID
+      document.getElementById('identity').value = 'user-' + Math.floor(Math.random() * 10000);
+      
+      try {
+        await checkLiveKitLoaded();
+        updateStatus('✅ LiveKit client loaded successfully. Ready to connect!', 'success');
+      } catch (error) {
+        updateStatus('❌ LiveKit client failed to load. Check your internet connection.', 'error');
+        console.error('LiveKit loading error:', error);
+      }
+    });
+
+    async function startCall() {
+      try {
+        updateStatus("🔄 Starting call...", 'info');
+        
+        const identity = document.getElementById('identity').value.trim();
+        const roomName = document.getElementById('roomName').value.trim();
+        
+        if (!identity) {
+          updateStatus('❌ Please enter your name', 'error');
+          return;
+        }
+        
+        if (!roomName) {
+          updateStatus('❌ Please enter a room name', 'error');
+          return;
+        }
+
+        // Check if LiveKit is available
+        try {
+          await checkLiveKitLoaded();
+        } catch (error) {
+          updateStatus('❌ LiveKit client not loaded. Please refresh the page.', 'error');
+          return;
+        }
+        
+        updateStatus("🔑 Getting access token...", 'info');
+        const token = await getToken(identity, roomName);
+        
+        updateStatus("🌐 Connecting to room...", 'info');
+        
+        // Create room instance
+        room = new LiveKitClient.Room({
+          adaptiveStream: true,
+          dynacast: true,
+          publishDefaults: {
+            videoSimulcastLayers: [
+              { resolution: { width: 320, height: 240 }, encoding: { maxBitrate: 200000 } },
+              { resolution: { width: 640, height: 480 }, encoding: { maxBitrate: 500000 } },
+            ],
+          },
+        });
+
+        // Set up event listeners
+        room
+          .on(LiveKitClient.RoomEvent.TrackSubscribed, handleTrackSubscribed)
+          .on(LiveKitClient.RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed)
+          .on(LiveKitClient.RoomEvent.ParticipantConnected, (participant) => {
+            updateStatus(`👋 ${participant.identity} joined the room`, 'success');
+          })
+          .on(LiveKitClient.RoomEvent.ParticipantDisconnected, (participant) => {
+            updateStatus(`👋 ${participant.identity} left the room`, 'info');
+            removeParticipantVideo(participant);
+          })
+          .on(LiveKitClient.RoomEvent.Connected, () => {
+            updateStatus(`🎉 Connected to room "${roomName}"`, 'success');
+          })
+          .on(LiveKitClient.RoomEvent.Disconnected, () => {
+            updateStatus('📴 Disconnected from room', 'info');
+          })
+          .on(LiveKitClient.RoomEvent.Reconnecting, () => {
+            updateStatus('🔄 Reconnecting...', 'info');
+          })
+          .on(LiveKitClient.RoomEvent.Reconnected, () => {
+            updateStatus('✅ Reconnected successfully', 'success');
+          });
+
+        // Connect to room
+        await room.connect(livekitURL, token);
+        
+        updateStatus("📹 Setting up local media...", 'info');
+        
+        // Create and publish local tracks
+        try {
+          localVideoTrack = await LiveKitClient.createLocalVideoTrack({
+            resolution: LiveKitClient.VideoPresets.h720.resolution,
+          });
+          localAudioTrack = await LiveKitClient.createLocalAudioTrack();
+
+          // Attach local video
+          const localVideo = document.getElementById('local-video');
+          localVideoTrack.attach(localVideo);
+
+          // Publish tracks
+          await room.localParticipant.publishTrack(localVideoTrack);
+          await room.localParticipant.publishTrack(localAudioTrack);
+
+          updateStatus(`🎉 Successfully joined room "${roomName}" as "${identity}"!`, 'success');
+          
+        } catch (mediaError) {
+          updateStatus(`⚠️ Connected to room but couldn't access camera/microphone: ${mediaError.message}`, 'error');
+        }
+
+      } catch (error) {
+        updateStatus(`❌ Failed to join room: ${error.message}`, 'error');
+        console.error("Call error:", error);
+      }
+    }
+
+    function handleTrackSubscribed(track, publication, participant) {
+      updateStatus(`📺 Receiving ${track.kind} from ${participant.identity}`, 'success');
+      
+      if (track.kind === LiveKitClient.Track.Kind.Video) {
+        addVideoElement(track, participant);
+      }
+    }
+
+    function handleTrackUnsubscribed(track, publication, participant) {
+      updateStatus(`📴 Stopped receiving ${track.kind} from ${participant.identity}`, 'info');
+      track.detach();
+    }
+
+    function addVideoElement(track, participant) {
+      const container = document.getElementById('remote-videos');
+      
+      // Remove "no participants" message
+      if (container.querySelector('p')) {
+        container.innerHTML = '';
+      }
+      
+      // Check if participant already has a video element
+      let wrapper = document.getElementById(`participant-${participant.sid}`);
+      if (!wrapper) {
+        wrapper = document.createElement('div');
+        wrapper.className = 'remote-participant';
+        wrapper.id = `participant-${participant.sid}`;
+        
+        const nameEl = document.createElement('p');
+        nameEl.textContent = participant.identity;
+        wrapper.appendChild(nameEl);
+        
+        const videoEl = document.createElement('video');
+        videoEl.id = `video-${participant.sid}`;
+        videoEl.autoplay = true;
+        videoEl.playsInline = true;
+        wrapper.appendChild(videoEl);
+        
+        container.appendChild(wrapper);
+      }
+      
+      const videoEl = wrapper.querySelector('video');
+      track.attach(videoEl);
+    }
+
+    function removeParticipantVideo(participant) {
+      const wrapper = document.getElementById(`participant-${participant.sid}`);
+      if (wrapper) {
+        wrapper.remove();
+      }
+      
+      // Show "no participants" message if no one is left
+      const container = document.getElementById('remote-videos');
+      if (container.children.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #6c757d; font-style: italic;">No participants yet. Share the room name with others to get started!</p>';
+      }
+    }
+
+    async function toggleVideo() {
+      if (!localVideoTrack) return;
+      
+      isVideoEnabled = !isVideoEnabled;
+      await localVideoTrack.setEnabled(isVideoEnabled);
+      
+      const btn = document.getElementById('toggle-video');
+      btn.textContent = isVideoEnabled ? 'Turn Off Video' : 'Turn On Video';
+      btn.style.background = isVideoEnabled ? '#6c757d' : '#28a745';
+      
+      updateStatus(isVideoEnabled ? '📹 Video enabled' : '📴 Video disabled', 'info');
+    }
+
+    async function toggleAudio() {
+      if (!localAudioTrack) return;
+      
+      isAudioEnabled = !isAudioEnabled;
+      await localAudioTrack.setEnabled(isAudioEnabled);
+      
+      const btn = document.getElementById('toggle-audio');
+      btn.textContent = isAudioEnabled ? 'Mute Audio' : 'Unmute Audio';
+      btn.style.background = isAudioEnabled ? '#6c757d' : '#dc3545';
+      
+      updateStatus(isAudioEnabled ? '🔊 Audio enabled' : '🔇 Audio muted', 'info');
+    }
+
+    async function getToken(identity, roomName) {
+      try {
+        // Call your Django get-token endpoint with GET parameters
+        const response = await fetch(`/get-token/?identity=${encodeURIComponent(identity)}&room=${encodeURIComponent(roomName)}`);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        return data.token;
+        
+      } catch (error) {
+        throw new Error(`Failed to get token: ${error.message}`);
+      }
+    }
+
+    async function endCall() {
+      if (room) {
+        try {
+          updateStatus("📴 Leaving room...", 'info');
+          
+          // Clean up local tracks
+          if (localVideoTrack) {
+            localVideoTrack.stop();
+            localVideoTrack = null;
+          }
+          if (localAudioTrack) {
+            localAudioTrack.stop();
+            localAudioTrack = null;
+          }
+          
+          // Disconnect from room
+          room.disconnect();
+          room = null;
+          
+          // Reset UI
+          document.getElementById('remote-videos').innerHTML = '<p style="text-align: center; color: #6c757d; font-style: italic;">No participants yet. Share the room name with others to get started!</p>';
+          document.getElementById('local-video').srcObject = null;
+          
+          // Reset buttons
+          document.getElementById('toggle-video').textContent = 'Turn Off Video';
+          document.getElementById('toggle-video').style.background = '#6c757d';
+          document.getElementById('toggle-audio').textContent = 'Mute Audio';
+          document.getElementById('toggle-audio').style.background = '#6c757d';
+          
+          isVideoEnabled = true;
+          isAudioEnabled = true;
+          
+          updateStatus("✅ Successfully left the room", 'success');
+          
+        } catch (error) {
+          updateStatus(`❌ Error leaving room: ${error.message}`, 'error');
+        }
+      } else {
+        updateStatus("ℹ️ Not connected to any room", 'info');
+      }
+    }
+    // Handle page unload
+    window.addEventListener('beforeunload', () => {
+      if (room) {
+        room.disconnect();
+      }
+    });
+  </script>
+</body>
+</html>
+
+
